@@ -1,0 +1,112 @@
+{
+  "FROM_SPECIFIC_SHIPMENT": [
+    {
+      "id": "FROM_SPECIFIC_SHIPMENT_1",
+      "messages": [
+        {
+          "content": "Find shipments from LL2-CSF-070 E to top up LL2-ODK-004 E at ANR",
+          "role": "user"
+        }
+      ],
+      "expectation": "Unable to find shipments with TEU less than 1."
+    }
+  ],
+  "TEU_FILTERING": [
+    {
+      "id": "TEU_FILTERING_1",
+      "messages": [
+        {
+          "content": "Find shipment to top up at YAT from other SVVDs and connect LL7-ERY-026 W with TEU less than 1",
+          "role": "user"
+        }
+      ],
+      "expectation": "Unable to find shipments with TEU less than 1."
+    },
+    {
+      "id": "TEU_FILTERING_2",
+      "messages": [
+        {
+          "content": "Find 200 TEU from other service loop to top up LL2-ODK-004 E at ANR",
+          "role": "user"
+        },
+        {
+          "content": "Only 24 TEU from other service loops are available for top up onto LL2-ODK-004 E at ANR, which is not enough to meet the 200 TEU requirement.",
+          "role": "assistant"
+        },
+        {
+          "content": "sort by Target connection time for load",
+          "role": "user"
+        },
+        {
+          "content": "The available TEU from other service loops eligible for top up onto LL2-ODK-004 E at ANR have been sorted by target connection time for load. You can now review and select shipments based on their earliest connection times.",
+          "role": "assistant"
+        },
+        {
+          "content": "find 20 TEU to top up LL1-OPR-008 E at WVN",
+          "role": "user"
+        },
+        {
+          "content": "20 TEU from other service loops have been selected to top up LL1-OPR-008 E at WVN.",
+          "role": "assistant"
+        },
+        {
+          "content": "change to 100 TEU",
+          "role": "user"
+        },
+          {
+          "content": "Shipments totaling 110 TEU have been selected for top up onto LL1-OPR-008 E at WVN.",
+          "role": "assistant"
+        },
+        {
+          "content": "have to be less than 100 TEU",
+          "role": "user"
+        }
+      ],
+      "expectation": "Shipments with total TEU 100 are retrieved."
+    }
+  ],
+  "TIME_RELATED": [
+    {
+      "id": "IDLING_TIME_1",
+      "messages": [
+        {
+          "content": "top up ECC1-EVH-001 E at YAT and target idling day is within 7 days",
+          "role": "user"
+        }
+      ],
+      "expectation": "Shipments with target idling time shorter than 7 days retrieved."
+    },
+    {
+      "id": "IDLING_TIME_2",
+      "messages": [
+        {
+          "content": "top up ECC1-EVH-001 E at YAT with original idling days more than 7 days",
+          "role": "user"
+        }
+      ],
+      "expectation": "Shipments with original idling time shorter than 7 days retrieved."
+    },
+    {
+      "id": "IDLING_TIME_3",
+      "messages": [
+        {
+          "content": "top up ECC1-EVH-001 E at YAT with shipments that will have less idling day after top-up",
+          "role": "user"
+        }
+      ],
+      "expectation": "Shipments with target idling shorter than original idling time retrieved."
+    }
+  ],
+  "NEXT_SEGMENT_TARGET_PORT": [
+    {
+      "id": "NEXT_SEGMENT_TARGET_PORT_1",
+      "messages": [
+        {
+          "content": "top up ECC1-EVH-001 E at YAT and discharge at CLO",
+          "role": "user"
+        }
+      ],
+      "expectation": "Shipments with next stop CLO retrieved."
+    }
+  ]
+}

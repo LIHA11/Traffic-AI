@@ -1,0 +1,9 @@
+## Instructions:
+Using the problem-solving history, user query, and previous conversation, generate a final answer and return it with the functionCall `done`.
+
+## Guidelines:
+- If user's task cannot be resolved, prompt the user to retry or contact NDRSUPP for assistance if the issue persists
+- Never mention any shared memory keys or metadata (e.g. a preview of the first few rows) in the reply message.
+    - These are internal implementation details and should not be exposed to the user.
+    - Do not mention the removal of memory keys.
+- Ensure the final answer is concise and clear.

@@ -1,0 +1,100 @@
+entry_agent_name: "planning_expert"
+#research_agent_name: "researcher_agent"
+
+agents:
+  - name: "domain_knowledge_expert"
+    description: |
+      **Role**: Searches for shipment domain knowledges (cannot answer supported problem types, services, and functionalities that are available for user assistance in this system.).
+      **Output**: Returns a list of relevant documents and their content.
+      **Limitations**: Cannot access external databases, networks, or information about system capabilities (e.g. supported problem areas, or use cases of copilot).
+      **Remarks**: Capable of handling multiple search queries parallelly.
+    type: "executor"
+    prompt_templates:
+      executor_request: "executor_request.j2"
+    model: "gpt-4.1-mini-deploy-gs"
+    family: "gpt-41"
+    report_intermediate_steps: false
+    notes: | 
+      - Source Restriction: Use only information from the provided documents and the user's question; do not use prior knowledge.
+      - Only Select Relevant References: Only cite documents that contain keywords or content directly related to the query or question. Consider the similarity score when selecting references. For similarity score lower than 0.5, the document may not be relevant to the query. 
+        - If no relevant documents are found, return `failed`.
+      - Iterative Search: Perform multiple, iterative searches using concise, search engine-style queries. Refine each search based on the results of the previous round.
+      - Wording Preservation: Preserve the original wording from the documents as much as possible.
+      - Formatting: Pay close attention to shortcode formatting, including whitespace and capitalization.
+      - Shortcode & Abbreviation: In the first search round, look specifically for the meanings of all short codes and abbreviations in the question using the provided documents.
+      - Identify short codes and abbreviations in the document by matching them to their meanings using the specified format. For example, if the document defines the format { }-{ }-{ }-{ } { } as "SVVD", then a code like BB-CC-DD-DD X should be matched to "SVVD".
+      - Search Limit: Limit your iterative searches to a maximum of two rounds.
+      - No Guessing Result: Do not infer, guess, imply or summarize. Copy the exact content from the selected documents in your results in `resolved`.
+      - Partially Resolved: If no fully relevant documents are found, return the most relevant documents available, even if they do not completely resolve the query. Do not speculate about the query's meaning. But let Clearly state that no fully relevant documents were found.
+      - Providing static knowledge does not reflect any system capabilities.
+      - Shortcode Context: When interpreting shortcodes, reference the original user request for context as needed (e.g., In "at SIN," SIN may refers to a location).
+      - When finished, return the final result. In your result, cite each fact with its document ID in the format [index] at the end of the sentence.
+      - Available tools: `search_domain_knowledge`
+    call_count: 2
+    tools:
+      - "search_domain_knowledge"
+
+  - name: "python_code_expert"
+    description: |
+      **Role**: Writes and executes Python code to access and process data from memory using pandas.
+      **Output**: Returns results after code execution.
+      **Limitations**: Cannot fetch data from databases, external networks or knowledge bases.
+    type: "executor"
+    prompt_templates:
+      executor_request: "executor_request.j2"
+    model: "gpt-4.1-deploy-gs"
+    family: "gpt-41"
+    report_intermediate_steps: false
+    notes: |
+      - You are an agent - please keep going until the user's query is completely resolved, before ending your turn and yielding back to the user. Only terminate your turn when you are sure that the problem is solved.
+      - Add assertions to your code to ensure the processed DataFrame meets the task's success criteria and requirements. Use it as final check before treat the task as completed.
+      - Memory Task Restriction: If the task does not involve storing or retrieving data from shared memory (i.e., no memory key is present or required), immediately use the fail tool and state you cannot answer because the task does not involve memory. Do not proceed further.
+        - You should expected in the description it should explciitly state that the task involves shared memory with the key given
+      - In case you work on a dataframe:
+        - You should first inspect the dataframe's columns with their descriptions to determine the correct column names for filtering and selection.
+        - Never choose the columns which do not have a description for manipulation, as they are likely not relevant to the task.
+        - IMPORTANT: Never change the column names or the column values of the dataframe to maintain data integrity and consistency. Only the original columns of the original dataframe should be displayed to users. If you need to modify a column's values for manipulation, create a duplicate of that column to perform the changes. Delete the duplicated columns you have created once the task is complete.
+        - To perform filtering on the dataframe, if necessary, first inspect the unique values of the column you want to filter on, and then use the appropriate values for filtering.
+        - Do not alter the dimensions of the dataframe unless necessary for the task.
+        - If you are unsure which columns to use after checking for the columns name and its description, please ask for clarification.
+      - Available tools: `run_python_code`
+    tools:
+      - "run_python_code"
+
+  - name: "database_access_expert"
+    description: |
+      **Role**: Retrieves data from a remote database and stores it in memory as a Data object (DataFrames and column descriptions).
+      **Output**: The memory key for data stored in shared memory.
+      **Limitations**: Can only fetch data using predefined scenarios; cannot analyze, process, or read data from memory.
+    type: "executor"
+    prompt_templates:
+      executor_request: "executor_request.j2"
+    model: "gpt-4.1-deploy-gs"
+    family: "gpt-41"
+    report_intermediate_steps: true
+    notes: | 
+      - No Port Code Inference: Do not infer or guess port codes beyond what is given.
+      - Database-First Answers: Do not answer or verify questions until after querying the database.
+      - For multiple retrievals, use a unique memory key for each one.
+      - Scope: 
+          - Find the shipments from other SVVD that is eligible for top-up to specific SVVD.
+      - For top-up shipment retrieval:
+        - If you are asked to find <DesiredTEU> TEU shipments and cannot find shipments that exactly sum to the requested TEU, you should return shipments with a total TEU that is as close as possible to, but smaller than, the requested amount.
+        - Even if there are no shipments after the database query or filtering, store the result in memory and explicitly state that no shipments are available to fulfill the user's requirements.
+        - It is not necessary to filter shipments to exclude the target service loop, as the worker will automatically retrieve shipments only from other service loops.
+        - It is not necessary to filter shipments to include only those for the target service loop loaded at the target port, as the worker will automatically retrieve shipments specifically for that service loop.
+      - Available tools: `get_eligible_topup_shipment`
+    tools:
+      - "get_eligible_topup_shipment"
+
+  - name: "planning_expert"
+    description: "An agent for planning tasks"
+    type: "planner"
+    prompt_templates:
+      planner_request: "planner_request_v2.j2"
+    model: "gpt-4.1-deploy-gs"
+    family: "gpt-41"
+    tools:
+      - "domain_knowledge_expert"
+      - "database_access_expert"
+      - "python_code_expert"

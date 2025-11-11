@@ -1,0 +1,257 @@
+{
+  "PLAN_EXECUTE": [
+    {
+      "id": "PLAN_EXECUTE_1",
+      "messages": [
+        {
+          "content": "Find shipments: Top Up at YAT from other SVVDs to connect LL7-ERY-026 W",
+          "role": "user"
+        }
+      ],
+      "expectation": "There are a certain number top-up shipment records at YAT from other SVVDs to connect LL7-ERY-026 W"
+    },
+    {
+      "id": "PLAN_EXECUTE_2",
+      "messages": [
+        {
+          "content": "Find shipments: Top Up at NIN from other SVVDs to connect L10-F2A-002 W",
+          "role": "user"
+        }
+      ],
+      "expectation": "No shipment records found at NIN from other SVVDs to connect L10-F2A-002 W beacuse the SVVD provided is invalid."
+    },
+    {
+      "id": "PLAN_EXECUTE_3",
+      "messages": [
+        {
+          "content": "Find 100 shipments to top up at YAT from other SVVDs to connect LL7-ERY-026 W, you can select them randomly",
+          "role": "user"
+        }
+      ],
+      "expectation": "100 shipments that have been randomly selected"
+    },
+    {
+      "id": "PLAN_EXECUTE_4",
+      "messages": [
+        {
+          "content": "Find shipments to top up at NIN from other SVVDs to connect LL7-ERY-026 W, and get total TEU",
+          "role": "user"
+        }
+      ],
+      "expectation": "Total TEU"
+    }
+  ],
+  "user_IN_LOOP": [
+    {
+      "id": "user_IN_LOOP_1",
+      "messages": [
+        {
+          "content": "Find shipments from other SVVDs to connect LL7-ERY-026 W",
+          "role": "user"
+        }
+      ],
+      "expectation": "The required 3-letter port code for Singapore could not be retrieved"
+    },
+    {
+      "id": "user_IN_LOOP_2",
+      "messages": [
+        {
+          "content": "Find shipments from other SVVDs to connect LL7-ERY-026 W",
+          "role": "user"
+        },
+        {
+          "content": "Missing Port Code",
+          "role": "assistant"
+        },
+        {
+          "content": "YAT",
+          "role": "user"
+        }
+      ],
+      "expectation": "There are certrain numebr of shipment records found"
+    },
+    {
+      "id": "user_IN_LOOP_3",
+      "messages": [
+        {
+          "content": "Get the age of team members",
+          "role": "user"
+        },
+        {
+          "content": "The age of team members are returned",
+          "role": "assistant",
+          "metadata": {
+            "SHIPMENT": [
+              {"name": "Alice", "age": 30},
+              {"name": "Bob", "age": 25}
+            ]
+          },
+          "others": {
+            "SHIPMENT": {
+              "data_description": {
+                 "name": "name of the members",
+                 "age": "age of the members"
+              }
+            }
+          }
+        },
+        {
+          "content": "Please find which one is older",
+          "role": "user"
+        }
+      ],
+      "expectation": "Indicate someone is older"
+    },
+    {
+      "id": "user_IN_LOOP_4",
+      "messages": [
+        {
+            "content": "Find shipments: Top Up at YAT from other SVVDs to connect LL7-ERY-026 W",
+            "role": "user"
+        },
+        {
+            "content": "Here are the shipment found",
+            "role": "assistant",
+            "metadata": {
+                "SHIPMENT": [
+                    {
+                        "SHIPMENT_NUMBER": "2760551360", "MVMT_SPEC_REF_NUM": "54I8XP7", 
+                        "SVC_TEU": 2.0, "SEG_DSCH_ID": "PHKG-3LL-162-North-YAT01-1", "CARGO_TRADE": "AET", 
+                        "OP_TRADE": "AET", "TCR": "HKG", "BKG_STATUS": "Confirmed", "COMMIT_STATUS": "Loaded", 
+                        "CGO_NATURE": "RF", "CGO_NATURE_GROUP": "RF", "ORIG_SVVD": "LL5-VCE-016 W", 
+                        "ORIG_NEXT_SEG_LOAD_ID": "LL5-VCE-016-West-YAT01-1", "ORIG_NEXT_SEG_DSCH_ID": "LL5-VCE-016-East-HAM01-1", 
+                        "TGT_NEXT_SEG_LOAD_ID": "LL7-ERY-026-West-YAT01-1", "TGT_NEXT_SEG_DSCH_ID": "LL7-ERY-026-East-HAM02-1", 
+                        "TGT_NEXT_LEG_SEG_LOAD_ID": "N/A", "TGT_NEXT_LEG_SEG_DSCH_ID": "N/A", "ORIG_NEXT_LEG_DSCH_PORT_CDE": "HAM", 
+                        "TS_PORT": "YAT", "INC_BERTH_ARR_TM": 1749120690000, "INC_BERTH_DEP_TM": 1749132300000, 
+                        "CON_BERTH_ARR_TM": 1749790800000, "CON_BERTH_DEP_TM": 1749898800000, 
+                        "TGT_BERTH_ARR_TM": 1753027200000, "TGT_BERTH_DEP_TM": 1753128000000, 
+                        "ORIG_CONNECTION_TIME": 778110000, "TGT_CONNECTION_TIME": 4007310000, 
+                        "TGT_NEXT_LEG_CONNECTION_TIME": null, "ORIG_IDLING_DAY": 7.6, "TARGET_IDLING_DAY": 45.1
+                    }
+                ]
+            },
+            "others": {
+              "SHIPMENT": {
+                "data_description": {
+                    "shipmentNumber": "Shipment number",
+                    "svcTeu": "Service TEU",
+                    "segDschId": "Voyage stop of incoming (previous) discharge leg",
+                    "cargoTrade": "Cargo Trade",
+                    "opTrade": "Operating Trade",
+                    "tcr": "Traffic Control Region",
+                    "bkgStatus": "Booking Status",
+                    "commitStatus": "Commit status",
+                    "cgoNature": "Cargo Nature",
+                    "cgoNatureGroup": "Cargo nature group",
+                    "origSvvd": "Original SVVD",
+                    "origNextSegLoadId": "Original voyage stop of next loading leg", 
+                    "origNextSegDschId": "Original discharge port (format: <ServiceID>-<VesselName>-<VoyageNumber>-<Direction>-<DischargePortCode><DockNumber>-<Number>). You should perform substring search for port code.",
+                    "tgtNextSegLoadId": "Target voyage stop of next loading leg (format: <ServiceID>-<VesselName>-<VoyageNumber>-<Direction>-<DischargePortCode><DockNumber>-<Number>). You should perform substring search for port code.", 
+                    "tgtNextSegDschId": "Target discharge port (format: <ServiceID>-<VesselName>-<VoyageNumber>-<Direction>-<DischargePortCode><DockNumber>-<Number>). You should perform substring search for port code.",
+                    "tsPort": "Target Port",
+                    "incBerthArrTm": "Incoming (Previous) leg berth arrival time",
+                    "incBerthDepTm": "Target (Potential) next loading leg berth arrival time (Target connection arrival time)",
+                    "conBerthArrTm": "Original next loading leg berth arrival time (Original connection arrival time)", 
+                    "conBerthDepTm": "Original next loading leg berth departure time (Original connection departure time)",
+                    "tgtBerthDepTm": "Cargo Movement Specification (CMS) number", 
+                    "origConnectionTime": "Original voyage connection time (format: %d %H:%M:%S.%f)",
+                    "tgtConnectionTime": "Target voyage connection time (format: %d %H:%M:%S.%f)",
+                    "origIdlingDay": "Original voyage idling time (days)",
+                    "targetIdlingDay": "Target voyage idling time (days)"
+                }
+              }
+            }
+        },
+        {
+            "content": "Please list out all TCR",
+            "role": "user"
+        }
+      ],
+      "expectation": "TCR is shown"
+    },
+    {
+      "id": "user_IN_LOOP_5",
+      "messages": [
+        {
+          "content": "Find from other SVVDs to connect LL7-ERY-026 W at Singapore",
+          "role": "user"
+        }
+      ],
+      "expectation": "No port code of Singapore"
+    }
+  ],
+  "COMPLEX_FUNCTION_CALL": [
+    {
+      "id": "COMPLEX_FUNCTION_CALL_1",
+      "messages": [
+        {
+          "content": "Select bookings which can be shifted from LL6-EAC-015 W to LL7-ERY-026 W at YAT",
+          "role": "user"
+        }
+      ],
+      "expectation": "There are certrain numebr of shipment records found"
+    },
+    {
+      "id": "COMPLEX_FUNCTION_CALL_2",
+      "messages": [
+        {
+          "content": "Select non-open bookings to top up LL6-EAC-015 W at YAT",
+          "role": "user"
+        }
+      ],
+      "expectation": "There are certrain numebr of shipment records found"
+    },
+      {
+      "id": "COMPLEX_FUNCTION_CALL_3",
+      "messages": [
+        {
+          "content": "Select confirmed bookings which can be shifted from LL6-EAC-015 W to LL7-ERY-026 W at YAT",
+          "role": "user"
+        }
+      ],
+      "expectation": "There are certrain numebr of shipment records found"
+    },
+    {
+      "id": "COMPLEX_FUNCTION_CALL_4",
+      "messages": [
+        {
+          "content": "Select booking which can be shifted from LL6-EAC-015 W to LL7-ERY-026 W at YAT except: 1.TCR: CHN, 2.connection time > 20000 hours, 3.cargo group = Dry",
+          "role": "user"
+        }
+      ],
+      "expectation": "There are certrain numebr of shipment records found"
+    }
+  ],
+  "COMMON_KNOWLEDGE": [
+    {
+      "id": "COMMON_KNOWLEDGE_1",
+      "messages": [
+        {
+          "content": "What is top up?",
+          "role": "user"
+        }
+      ],
+      "expectation": "No top-up definition"
+    },
+    {
+      "id": "COMMON_KNOWLEDGE_2",
+      "messages": [
+        {
+          "content": "What is non-open booking?",
+          "role": "user"
+        }
+      ],
+      "expectation": "Definition of non-open booking"
+    },
+    {
+      "id": "COMMON_KNOWLEDGE_3",
+      "messages": [
+        {
+          "content": "What is non-open booking & top up?",
+          "role": "user"
+        }
+      ],
+      "expectation": "Only the definition of both non-open booking"
+    }
+  ]
+}

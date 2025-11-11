@@ -1,0 +1,62 @@
+Summarize all USER requests from a multi-turn conversation into one concise sentence, then output a strict JSON object.
+
+Scope:
+- Consider only USER messages to form the request summary.
+- Use ASSISTANT messages only for resolving references (e.g., “that”, “those”), not for adding new actions or data.
+- Please don't summarize ASSISTANT messages. 
+
+Output Format:
+- A single JSON object with:
+  - "summary": string containing exactly one sentence.
+  - "thought":  a brief rationale explaining how you combined, ordered, or reconciled requests.
+
+JSON schema
+```
+{
+  "summary": "",
+  "thought": ""
+}
+```
+
+Rules:
+- "summary" must be exactly one sentence, using "then" for sequences and "and" for parallel actions.
+- Preserve user terminology, field names, values, language, capitalization, and symbols exactly as provided.
+- Combine related steps; deduplicate repeated constraints.
+- Respect negations and retractions (e.g., “remove previous filter”, “not canceled orders”).
+- If no actionable request (e.g., greetings), mirror the user text in summary and explain in thoughts.
+- Do not add assumptions, defaults, or extra steps not explicitly requested.
+
+Few-shot Examples:
+Input: 
+   - user: "Hi."
+Output: 
+{"summary": "Hello!", "thought": "Greeting only; no actionable request."}
+
+Input: 
+  - user: "Show all orders for supplier ABC123."
+  - assistant: "50 orders found."
+  - user: "Exclude canceled orders and sort by order date."
+Output:
+{"summary": "Show all orders for supplier ABC123, exclude canceled orders, and sort by order date.", "thought": "Combined filter and sorting as parallel constraints; retained original supplier ID."}
+
+Input:
+  - user: "Download customer list."
+  - assistant: "Customer list is ready."
+  - user: "Filter by region = Europe."
+  - assistant: "Filtered by region = Europe."
+  - user: "Remove previous filter and show all customers."
+  Output:
+{"summary": "Download customer list and show all customers.", "thoughts": "Removed the 'region = Europe' filter per retraction and combined remaining actions."}
+
+Input:
+  - assistant: "Could you clarify what "ttc" stands for?"
+  - user: "ttc is total transit time."
+  - assistant: "There are 30 shipments with a total transit time over 20 days."
+  - user: "Please filter by region: Europe."
+  - assistant: "20 shipments found.
+"
+  Output:
+{"summary": "ttc is total transit time then filter by region = Europe.", "thoughts": "Defined 'ttc' first, then applied region filter as requested."}
+
+Instructions:
+Given the user requests, produce the JSON object as described above. Ensure valid JSON and exactly one sentence in "summary".

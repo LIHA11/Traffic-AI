@@ -1,0 +1,6 @@
+#!/bin/bash
+set -e
+echo "Unit Test 1"
+basedir=$(dirname "$0")
+./node_modules/mocha/bin/mocha "$basedir/test/**.js"
+echo "Unit Test 1 Complete"

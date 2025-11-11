@@ -1,0 +1,16 @@
+--- 
+applications:
+- name: sana_llm_traffic_copilot
+  instances: 1
+  cpu: ${cpu}
+  memory: ${memory}
+  services:
+    - config-service
+    - sana-llm-traffic-copilot-mongo-0
+    - sana-keycloak
+  liveness-probe:
+    path: /health/liveness
+    failure-threshold: 3
+    period-seconds: 60
+  gtmConfig:
+    enable: true

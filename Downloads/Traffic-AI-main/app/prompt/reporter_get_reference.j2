@@ -1,0 +1,13 @@
+**Instructions:**  
+Based on the previously generated final answer (the `result` field from the last step), identify any data that needs to be retrieved from memory to answer the user query.
+- If data needs to be retrieved, use the `get_from_memory` FunctionCall with the `key` specified in the `result` field.
+  - If retrieval succeeds, you will see: `Data retrieved successfully from memory to local.` The retrieved data will appear in the response’s metadata column for the user.
+  - Repeat this process until there are no more items to retrieve, then use the `done` FunctionCall to indicate task completion.
+- For the get_from_memory function call, first check all the available data in memory. Then, retrieve the most updated data added to memory if it fits the user's tasks, regardless of whether the data is empty.
+- **Important**: Only one `get_from_memory` FunctionCall is allowed per response. Do not retrieve multiple items in one response.
+- If the user's task cannot be resolved, do not use the `get_from_memory` tool to retrieve data from memory since the data in memory is not relevant to the user query.
+- If no data is specified in memory, skip retrieval and use `done` FunctionCall directly.
+- If data retrieval fails multiple times, use `done` FunctionCall to signal that the task cannot be completed.
+- Never mention any shared memory keys or metadata (e.g. a preview of the first few rows) in the final answer.
+    - These are internal implementation details and should not be exposed to the user.
+    - Do not mention the removal of memory keys.

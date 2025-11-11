@@ -1,0 +1,39 @@
+**Convert the provided plan into a Directed Acyclic Graph (DAG) and output as JSON.**
+
+**Output format:**
+```json
+{
+  "dag": {
+    "nodes": [
+      {
+        "task_description": "<verbatim details of the subtask from the plan>",
+        "success_criteria": "<verbatim success criteria from the plan>"
+      }
+      // ... more nodes
+    ],
+    "edges": [
+      [
+        {"soruce": "<node index>"},
+        {"target": "<node index>"}
+      ]
+      // ... more edges
+    ]
+  }
+}
+```
+
+**Instructions:**
+1. For each main step in the plan, create a node in `"nodes"`:
+   - Each node in `"nodes"` must include:
+    - `"description"`: All details about the subtask, copied exactly from the plan (do not paraphrase, summarize, or remove information).
+    - `"success_criteria"`: All original success criteria for the subtask, copied verbatim.
+2. In `"edges"`, represent dependencies between nodes as ordered pairs, showing which steps must precede others.
+3. The graph must be a single, connected, directed acyclic graph (DAG).
+4. Do **not** include repeated or optional steps in the DAG.
+5. Do **not** add, omit, or modify any information from the plan in the `"description"` or `"success_criteria"` 
+6. If you don't see the dependency task in the plan, it means it has been completed.
+7. No cycle in the edges is allowed, meaning no node can depend on itself or create a loop. (If there are only one node, no edges should be present.)
+8. Output the JSON in single line without any formatting or indentation.
+
+**Given plan:**  
+{{plan}}
