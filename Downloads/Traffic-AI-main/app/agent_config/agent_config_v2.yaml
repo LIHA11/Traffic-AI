@@ -95,6 +95,18 @@ agents:
       - Scope: 
         - Find the shipments from other SVVD that is eligible for top-up to specific SVVD.
         - Use the `get_eligible_topup_shipment` tool to retrieve the shipments from the database.
+      - **CRITICAL WORKFLOW**:
+        1. Call `get_eligible_topup_shipment` tool with ALL required parameters:
+           - port: Target port code (3-letter, e.g., "SIN")
+           - svvd: Target SVVD (e.g., "WM2-CVF-004 W")
+           - min_empty_ratio: Threshold (default 85)
+           - session_id: Use the current session ID from context
+           - memory_key: Format "eligible_topup_{PORT}_{SVVD_NO_SPACES}" (remove all spaces/special chars from SVVD, e.g., "eligible_topup_SIN_WM2CVF004W")
+        2. The tool will automatically store results to working memory and return a JSON summary
+        3. Call `resolved` tool with:
+           - result: The JSON string returned from get_eligible_topup_shipment
+           - result_memory_key: The SAME memory_key you used in step 1
+           - user_message: Summary like "Found N eligible shipments for top-up at {PORT} to {SVVD}, excluding special cargo (DG/RD/AD/PCT)"
       - Full Port Name Handling:
         - Sometime user may provide full port name instead of a 3-digit port code. The port columns in the table only contain 3-digit port codes. 
         - Do not infer or guess the port code from the full port name based on your prior knowledge, as common port codes may be different from our internal database.
@@ -112,7 +124,7 @@ agents:
       - For multiple retrievals, use a unique memory key for each one.
       - If you are asked to find <DesiredTEU> TEU shipments and cannot find shipments that exactly sum to the requested TEU, you should return shipments with a total TEU that is as close as possible to, but smaller than, the requested amount.
       - Even if there are no shipments after the database query or filtering, store the result in memory and explicitly state that no shipments are available to fulfill the user's requirements.
-      - Available tools: `get_eligible_topup_shipment`, `port_name_mapper`
+      - Available tools: `get_eligible_topup_shipment`, `port_name_mapper`, and the built-in `resolved` tool
     tools:
       - "get_eligible_topup_shipment"
       - "port_name_mapper"
@@ -135,7 +147,7 @@ agents:
         - When asked to retrieve shipments, immediately call the `resolved` tool with these parameters:
           - result: A JSON string containing this exact hardcoded data:
             ```
-            [{"SHIPMENT_NUMBER":"2157351430","SVVD":"WM2-CVF-004 W","VOY_STOP_PORT_CDE":"SIN","NEXT_POD":"BCN03","SVC_TEU":1.0,"WEIGHT_TON":24,"WEIGHT_KG":24000,"ALLOC_TCR_REGN":"VND","CGO_TRADE":"AET","OP_TRADE":"AET","CGO_NATURE":"GC","CARGO_NATURE_GROUP":"Dry","BIZ_NATURE":"Committed","VOY_STOP_BERTH_ARR_TM_LOC":"23-APR-25 02.05.35 PM","VOY_STOP_BERTH_DEP_TM_LOC":"24-APR-25 04.15.39 PM"},{"SHIPMENT_NUMBER":"2157351431","SVVD":"WM2-CVF-004 W","VOY_STOP_PORT_CDE":"SIN","NEXT_POD":"HKG01","SVC_TEU":2.0,"WEIGHT_TON":30,"WEIGHT_KG":30000,"ALLOC_TCR_REGN":"HKG","CGO_TRADE":"AET","OP_TRADE":"AET","CGO_NATURE":"GC","CARGO_NATURE_GROUP":"Dry","BIZ_NATURE":"Open","VOY_STOP_BERTH_ARR_TM_LOC":"24-APR-25 08.15.00 AM","VOY_STOP_BERTH_DEP_TM_LOC":"25-APR-25 06.45.00 PM"},{"SHIPMENT_NUMBER":"2157351432","SVVD":"WM2-CVF-005 E","VOY_STOP_PORT_CDE":"BCN","NEXT_POD":"SIN02","SVC_TEU":1.0,"WEIGHT_TON":20,"WEIGHT_KG":20000,"ALLOC_TCR_REGN":"GER","CGO_TRADE":"IET","OP_TRADE":"IET","CGO_NATURE":"DG","CARGO_NATURE_GROUP":"PCT","BIZ_NATURE":"Committed","VOY_STOP_BERTH_ARR_TM_LOC":"25-APR-25 10.30.00 AM","VOY_STOP_BERTH_DEP_TM_LOC":"26-APR-25 12.00.00 PM"}]
+            [{"SHIPMENT_NUMBER":"2157351430","SVVD":"WM2-CVF-004 W","VOY_STOP_PORT_CDE":"SIN","NEXT_POD":"BCN03","SVC_TEU":1.0,"WEIGHT_TON":24,"WEIGHT_KG":24000,"empty_ratio":90.0,"ALLOC_TCR_REGN":"VND","CGO_TRADE":"AET","OP_TRADE":"AET","CGO_NATURE":"GC","CARGO_NATURE_GROUP":"Dry","BIZ_NATURE":"Committed","VOY_STOP_BERTH_ARR_TM_LOC":"23-APR-25 02.05.35 PM","VOY_STOP_BERTH_DEP_TM_LOC":"24-APR-25 04.15.39 PM"},{"SHIPMENT_NUMBER":"2157351431","SVVD":"WM2-CVF-004 W","VOY_STOP_PORT_CDE":"SIN","NEXT_POD":"HKG01","SVC_TEU":2.0,"WEIGHT_TON":30,"WEIGHT_KG":30000,"ALLOC_TCR_REGN":"HKG","CGO_TRADE":"AET","OP_TRADE":"AET","CGO_NATURE":"GC","CARGO_NATURE_GROUP":"Dry","BIZ_NATURE":"Open","VOY_STOP_BERTH_ARR_TM_LOC":"24-APR-25 08.15.00 AM","VOY_STOP_BERTH_DEP_TM_LOC":"25-APR-25 06.45.00 PM"},{"SHIPMENT_NUMBER":"2157351432","SVVD":"WM2-CVF-005 E","VOY_STOP_PORT_CDE":"BCN","NEXT_POD":"SIN02","SVC_TEU":1.0,"WEIGHT_TON":20,"WEIGHT_KG":20000,"empty_ratio":80.0,"ALLOC_TCR_REGN":"GER","CGO_TRADE":"IET","OP_TRADE":"IET","CGO_NATURE":"DG","CARGO_NATURE_GROUP":"PCT","BIZ_NATURE":"Committed","VOY_STOP_BERTH_ARR_TM_LOC":"25-APR-25 10.30.00 AM","VOY_STOP_BERTH_DEP_TM_LOC":"26-APR-25 12.00.00 PM"}]
             ```
           - result_memory_key: Use format "shipment_QUERY" where QUERY describes the search (e.g., "shipment_2157351430_SIN_WM2-CVF-004_W")
           - user_message: "Successfully retrieved 3 shipment records from the database."
@@ -150,6 +162,14 @@ agents:
       planner_request: "planner_request_v2.j2"
     model: "gpt-4.1-deploy-gs"
     family: "gpt-41"
+    notes: |
+      - **Conditional Workflow Based on empty_ratio**:
+        - After sql_generation_expert returns shipment data, check if any shipment has empty_ratio > 85
+        - If empty_ratio > 85: Create a follow-up task to call database_access_expert with get_eligible_topup_shipment tool
+        - If empty_ratio <= 85 or empty_ratio is missing: Treat as normal shipment details query and proceed to report
+      - When calling database_access_expert for top-up:
+        - Extract the port, SVVD, and min_empty_ratio from the original shipment data
+        - Pass these parameters to get_eligible_topup_shipment
     tools:
       - "domain_knowledge_expert"
       - "database_access_expert"

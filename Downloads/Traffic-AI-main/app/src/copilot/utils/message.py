@@ -98,10 +98,43 @@ class WorkingMemoryService:
                 async with aiohttp.ClientSession() as session:
                     async with session.post(url, headers=headers, json=payload, ssl=False) as resp:
                         resp.raise_for_status()
-                        return await resp.json()
+                        raw = await resp.json()
+                        # Normalize into schema expected by reporter (JSON string with message/result)
+                        import json as _json
+                        if raw.get("error"):
+                            return _json.dumps({
+                                "message": f"Failed to retrieve memory key '{key}': {raw['error']}",
+                                "error": raw.get("error"),
+                                "result": None
+                            }, ensure_ascii=False)
+                        # raw should contain: ok/content/meta_data
+                        content_str = raw.get("content")
+                        # Provide headers if content is a JSON array of dicts
+                        headers_list = None
+                        try:
+                            parsed = _json.loads(content_str) if isinstance(content_str, str) else content_str
+                            if isinstance(parsed, list) and parsed and isinstance(parsed[0], dict):
+                                headers_list = list(parsed[0].keys())
+                        except Exception:
+                            pass
+                        return _json.dumps({
+                            "message": "Memory item retrieved successfully.",
+                            "error": None,
+                            "result": {
+                                "content": content_str,
+                                "headers": headers_list,
+                                "type": "JSON",
+                                "meta_data": raw.get("meta_data")
+                            }
+                        }, ensure_ascii=False)
             except aiohttp.ClientError as e:
                 logger.error("get_from_memory failed: %s", e, extra={"url": url, "payload": payload})
-                return {"error": str(e), "session_id": session_id, "key": key}
+                import json as _json
+                return _json.dumps({
+                    "message": f"Client error retrieving memory key '{key}': {e}",
+                    "error": str(e),
+                    "result": None
+                }, ensure_ascii=False)
 
         return [
             FunctionTool(

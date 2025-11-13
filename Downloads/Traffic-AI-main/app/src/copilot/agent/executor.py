@@ -298,6 +298,23 @@ class Executor(Agent):
                     UserMessage(content=reply_result, source=self.id.type)
                 ])
                 return False, None, False
+
+            # --- Auto-inject session_id / memory_key heuristics ---
+            try:
+                if hasattr(tool, "_args_type"):
+                    model_fields = getattr(tool._args_type, "model_fields", {})
+                    if "session_id" in model_fields and "session_id" not in arguments:
+                        arguments["session_id"] = getattr(ctx.topic_id, "source", None) or self.get_id()
+                    if call.name == "get_eligible_topup_shipment" and "memory_key" in model_fields and "memory_key" not in arguments:
+                        port_val = arguments.get("port")
+                        svvd_val = arguments.get("svvd")
+                        if isinstance(port_val, str) and isinstance(svvd_val, str):
+                            import re
+                            norm_svvd = re.sub(r'[^A-Za-z0-9]', '', svvd_val.upper())
+                            arguments["memory_key"] = f"eligible_topup_{port_val.upper()}_{norm_svvd}"
+            except Exception as _auto_inject_err:
+                logger.debug("Auto injection skipped: %s", _auto_inject_err)
+
             tool_calls.append((arguments, tool, call))
             
         for call in llm_result.content:
@@ -368,26 +385,106 @@ class Executor(Agent):
             else:
                 for call in llm_result.content:
                     if call.id == result.call_id:
-                        user_msg = json.loads(call.arguments).get("user_message", "No user message provided.")
-                        memory_location = json.loads(call.arguments).get("result_memory_key", None)
+                        try:
+                            call_args = json.loads(call.arguments)
+                        except json.JSONDecodeError:
+                            call_args = {}
+                        user_msg = call_args.get("user_message", "No user message provided.")
+                        memory_location = call_args.get("result_memory_key") or call_args.get("memory_key")
+                        session_arg = call_args.get("session_id")
                         res = []
+                        inline_result_raw = call_args.get("result") or result.content
+                        # Attempt proactive store if memory key provided but not yet present
                         if self._wms is not None and memory_location is not None:
-                            ## Get file from memory
+                            lookup_session = session_arg or self.get_id()
+                            need_store = False
+                            # First try to see if it exists
+                            try:
+                                existing = await self._wms.get(session_id=lookup_session, resource_id=memory_location)
+                                if isinstance(existing, dict) and existing.get("error") == "not_found":
+                                    need_store = True
+                            except Exception:
+                                need_store = True
+                            if need_store:
+                                # Parse inline_result_raw (may be JSON list/string) and store
+                                try:
+                                    import json as _json
+                                    parsed_inline_for_store = inline_result_raw
+                                    if isinstance(parsed_inline_for_store, str):
+                                        try:
+                                            parsed_inline_for_store = _json.loads(parsed_inline_for_store)
+                                        except Exception:
+                                            # keep raw string
+                                            pass
+                                    await self._wms.set(
+                                        content=_json.dumps(parsed_inline_for_store, ensure_ascii=False) if not isinstance(parsed_inline_for_store, str) else parsed_inline_for_store,
+                                        session_id=lookup_session,
+                                        resource_id=memory_location,
+                                        data_description={
+                                            "source": "executor_auto_store",
+                                            "agent": self._name,
+                                            "original_user_msg": user_msg[:120]
+                                        }
+                                    )
+                                    logger.info("[Executor] Auto-stored result to memory key %s (session=%s)", memory_location, lookup_session)
+                                except Exception as e:
+                                    logger.error("[Executor] Failed auto-store to memory key %s: %s", memory_location, e)
+                        if self._wms is not None and memory_location is not None:
+                            # Try provided session_id first, then fallback to executor run id
+                            lookup_session = session_arg or self.get_id()
                             try:
                                 wms_result = await self._wms.get(
-                                    session_id=self.get_id(),
+                                    session_id=lookup_session,
                                     resource_id=memory_location
                                 )
-                                res = [{"content": json.loads(wms_result["content"]), "headers": wms_result["headers"], "meta_data": { "data_description": wms_result["meta_data"], "data_type": wms_result["content_type"] }}]
+                                if isinstance(wms_result, dict) and "content" in wms_result:
+                                    try:
+                                        parsed_content = json.loads(wms_result["content"]) if isinstance(wms_result["content"], str) else wms_result["content"]
+                                    except Exception:
+                                        parsed_content = wms_result["content"]
+                                    res = [{
+                                        "content": parsed_content,
+                                        "headers": wms_result.get("headers"),
+                                        "meta_data": {"data_description": wms_result.get("meta_data"), "data_type": wms_result.get("content_type")}
+                                    }]
+                                else:
+                                    logger.error("Unexpected WMS response structure for key %s: %s", memory_location, wms_result)
                             except Exception as e:
-                                logger.error("Failed to get memory from WMS: %s", str(e))
+                                logger.error("Failed to get memory from WMS (session=%s key=%s): %s", lookup_session, memory_location, str(e))
                                 res = []  # Ensure res is always a list
-                            
+                        # Fallback: if no references from memory, attempt to parse inline result JSON
+                        if not res:
+                            inline_result = inline_result_raw
+                            try:
+                                parsed_inline = json.loads(inline_result) if isinstance(inline_result, str) else inline_result
+                                # Heuristic: only attach if it looks like structured data (dict with eligible_shipments / list)
+                                if isinstance(parsed_inline, (dict, list)):
+                                    res = [{
+                                        "content": parsed_inline,
+                                        "headers": None,
+                                        "meta_data": {"data_description": {"source": "inline_fallback"}, "data_type": type(parsed_inline).__name__}
+                                    }]
+                                    logger.warning("[Executor] Memory lookup failed; using inline result fallback for reporting (key=%s)", memory_location)
+                            except Exception:
+                                pass
+                        # If we have data but user_msg is failure-like, adjust
+                        if res and any(tok in user_msg.lower() for tok in ["unable", "cannot", "fail"]):
+                            try:
+                                count_hint = 0
+                                first_block = res[0]["content"]
+                                if isinstance(first_block, list):
+                                    count_hint = len(first_block)
+                                elif isinstance(first_block, dict) and "eligible_shipments" in first_block:
+                                    count_hint = len(first_block.get("eligible_shipments", []))
+                                if count_hint:
+                                    user_msg = f"Retrieved {count_hint} record(s) successfully."  # overwrite negative message
+                            except Exception:
+                                pass
                         await self._report_message(
                             LogMessage(
                                 agent_name=self._name,
                                 action="Final results of the subtask:",
-                                content=user_msg, 
+                                content=user_msg,
                                 id=self.get_id(),
                                 references=res,
                                 is_complete=False,

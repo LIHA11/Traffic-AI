@@ -1,5 +1,6 @@
 # Standard library imports
 import asyncio
+import json
 import logging
 import socket
 import threading
@@ -374,32 +375,104 @@ class CopilotAgentRuntime(SingleThreadedAgentRuntime):
         
         if not self._tool_registry.get_tool("get_eligible_topup_shipment"):
             async def get_eligible_topup_shipment(
-                shipments: Annotated[list, "List of shipment dict. Each dict should include keys like 'svvd', 'port', 'remaining_space', 'empty_ratio', etc."],
-                port: Annotated[str, "Target port for top up."],
+                port: Annotated[str, "Target port for top up (3-letter code)."],
                 svvd: Annotated[str, "Target SVVD/service loop for top up."],
-                min_empty_ratio: Annotated[float, "Minimum empty ratio threshold for eligible top up. Default 85."] = 85,
-            ) -> list:
+                min_empty_ratio: Annotated[float, "Minimum empty ratio threshold. Default 85."] = 85,
+                session_id: Annotated[Optional[str], "Session ID for memory storage."] = None,
+                memory_key: Annotated[Optional[str], "Memory key to store results. Format: 'eligible_topup_{PORT}_{SVVD_NO_SPACES}'."] = None,
+            ) -> str:
                 """
-                Returns a list of shipment dict that are eligible for top up at the given port and SVVD,
-                i.e. empty_ratio >= min_empty_ratio and matching port/SVVD.
+                Returns shipments eligible for top-up and stores them in working memory.
+                Uses hardcoded test data in development mode.
                 """
-                # 防御性编程，筛选数据
+                import json
+                
+                # Use hardcoded test data
+                shipments = [
+                    {"SHIPMENT_NUMBER":"2157351430","SVVD":"WM2-CVF-004 W","VOY_STOP_PORT_CDE":"SIN","empty_ratio":90.0, "SVC_TEU":1.0, "NEXT_POD":"BCN03", "WEIGHT_TON":24, "WEIGHT_KG":24000, "ALLOC_TCR_REGN":"VND", "CGO_TRADE":"AET", "OP_TRADE":"AET", "CGO_NATURE":"GC", "CARGO_NATURE_GROUP":"Dry", "BIZ_NATURE":"Committed", "VOY_STOP_BERTH_ARR_TM_LOC":"23-APR-25 02.05.35 PM", "VOY_STOP_BERTH_DEP_TM_LOC":"24-APR-25 04.15.39 PM"},
+                    {"SHIPMENT_NUMBER":"2157351431","SVVD":"WM2-CVF-004 W","VOY_STOP_PORT_CDE":"SIN", "SVC_TEU":2.0, "NEXT_POD":"HKG01", "WEIGHT_TON":30, "WEIGHT_KG":30000, "ALLOC_TCR_REGN":"HKG", "CGO_TRADE":"AET", "OP_TRADE":"AET", "CGO_NATURE":"GC", "CARGO_NATURE_GROUP":"Dry", "BIZ_NATURE":"Open", "VOY_STOP_BERTH_ARR_TM_LOC":"24-APR-25 08.15.00 AM", "VOY_STOP_BERTH_DEP_TM_LOC":"25-APR-25 06.45.00 PM"},
+                    {"SHIPMENT_NUMBER":"2157351432","SVVD":"WM2-CVF-005 E","VOY_STOP_PORT_CDE":"BCN","empty_ratio":80.0, "SVC_TEU":1.0, "NEXT_POD":"SIN02", "WEIGHT_TON":20, "WEIGHT_KG":20000, "ALLOC_TCR_REGN":"GER", "CGO_TRADE":"IET", "OP_TRADE":"IET", "CGO_NATURE":"DG", "CARGO_NATURE_GROUP":"PCT", "BIZ_NATURE":"Committed", "VOY_STOP_BERTH_ARR_TM_LOC":"25-APR-25 10.30.00 AM", "VOY_STOP_BERTH_DEP_TM_LOC":"26-APR-25 12.00.00 PM"},
+                    # 添加一个符合top-up条件的测试数据
+                    {"SHIPMENT_NUMBER":"2157351433","SVVD":"AAA1-OYK-203 S","VOY_STOP_PORT_CDE":"SIN","empty_ratio":88.0, "SVC_TEU":1.5, "NEXT_POD":"SHA01", "WEIGHT_TON":22, "WEIGHT_KG":22000, "ALLOC_TCR_REGN":"CHN", "CGO_TRADE":"AET", "OP_TRADE":"AET", "CGO_NATURE":"GC", "CARGO_NATURE_GROUP":"Dry", "BIZ_NATURE":"Open", "VOY_STOP_BERTH_ARR_TM_LOC":"26-APR-25 09.00.00 AM", "VOY_STOP_BERTH_DEP_TM_LOC":"27-APR-25 03.00.00 PM"},
+                ]
+                
+                # Filter eligible shipments
                 eligible = []
                 for ship in shipments:
                     try:
-                        if (
-                            ship.get("port") == port and
-                            ship.get("svvd") != svvd and  # 不包括目标本身
-                            float(ship.get("empty_ratio", 0)) >= min_empty_ratio
-                        ):
-                            eligible.append(ship)
-                    except Exception:
+                        # Check if shipment is at the target port
+                        if ship.get("VOY_STOP_PORT_CDE") != port:
+                            continue
+                            
+                        # Exclude the target SVVD itself
+                        if ship.get("SVVD") == svvd:
+                            continue
+                        
+                        # Check empty_ratio threshold
+                        ship_empty_ratio = ship.get("empty_ratio")
+                        if ship_empty_ratio is None:
+                            continue
+                        if float(ship_empty_ratio) < min_empty_ratio:
+                            continue
+                        
+                        # Exclude special cargo by default (DG, RD, AD, PCT)
+                        cargo_nature = ship.get("CGO_NATURE", "")
+                        cargo_group = ship.get("CARGO_NATURE_GROUP", "")
+                        if cargo_nature in ["DG", "RD", "AD"] or cargo_group == "PCT":
+                            continue
+
+                        eligible.append(ship)
+                    except Exception as e:
+                        logger.warning(f"Error filtering shipment {ship.get('SHIPMENT_NUMBER')}: {e}")
                         continue
-                return eligible
+                
+                # Derive memory_key automatically if not provided
+                if memory_key is None:
+                    try:
+                        import re
+                        norm_svvd = re.sub(r'[^A-Za-z0-9]', '', svvd.upper())
+                        memory_key = f"eligible_topup_{port.upper()}_{norm_svvd}"
+                    except Exception:
+                        memory_key = None
+
+                # Store to working memory if session_id and memory_key provided (using WorkingMemoryService.set API)
+                if session_id and memory_key and self._working_memory_service:
+                    try:
+                        await self._working_memory_service.set(
+                            content=json.dumps(eligible, ensure_ascii=False),
+                            session_id=session_id,
+                            resource_id=memory_key,
+                            data_description={
+                                "source": "get_eligible_topup_shipment",
+                                "port": port,
+                                "svvd": svvd,
+                                "count": len(eligible),
+                                "min_empty_ratio": min_empty_ratio
+                            }
+                        )
+                        logger.info(f"[get_eligible_topup_shipment] Stored {len(eligible)} shipments to memory key: {memory_key} (session_id={session_id})")
+                    except Exception as e:
+                        logger.error(f"[get_eligible_topup_shipment] Failed to store to memory: {e}")
+                
+                result = {
+                    "eligible_shipments": eligible,
+                    "count": len(eligible),
+                    "filters": {
+                        "port": port,
+                        "excluded_svvd": svvd,
+                        "min_empty_ratio": min_empty_ratio
+                    },
+                    "memory_key": memory_key if memory_key else None,
+                    "session_id": session_id
+                }
+                return json.dumps(result, ensure_ascii=False)
 
             self._tool_registry.register_tool(
-                FunctionTool(get_eligible_topup_shipment, name="get_eligible_topup_shipment",
-                            description="筛选可用于补舱的运单，按港口/服务号过滤，空舱率超过指定阈值。输入list[dict]，返回筛选后的list[dict]")
+                FunctionTool(
+                    get_eligible_topup_shipment, 
+                    name="get_eligible_topup_shipment",
+                    description="Find shipments eligible for top-up at a specific port and SVVD. Automatically stores results to working memory if session_id and memory_key are provided. Filters by port (VOY_STOP_PORT_CDE), excludes target SVVD, checks min_empty_ratio, and excludes special cargo (DG/RD/AD/PCT) by default. Returns JSON with eligible_shipments, count, filters, and memory_key."
+                )
             )
 
     async def start(self):
