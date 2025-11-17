@@ -299,6 +299,140 @@ async def main_async(args):
     elif args.mode == "pe":
         await preference_extraction(runtime)
     else:
+        # Enhanced non-interactive single message support with optional top-up waiting
+        if getattr(args, "user_message", None):
+            from src.conversations.vo.message import Message
+            from src.conversations.enum.role_enum import RoleEnum
+            user_msg = args.user_message
+            wait_topup = getattr(args, "wait_topup", False)
+            if not wait_topup:
+                try:
+                    message, duration = await runtime.create_until_finish(
+                        messages=[Message(content=user_msg, role=RoleEnum.USER, metadata=None)],
+                        print_log=True,
+                        conversation_id=uuid.uuid4()
+                    )
+                    print(f"Single chat response: {message.to_dict().get('content')} (duration: {duration} ms)")
+                except Exception as e:
+                    print(f"Error running single chat message: {e}")
+                return
+            # wait_topup logic: manually consume queue until top-up completes or timeout
+            try:
+                queue, run_id = await runtime.create(
+                    messages=[Message(content=user_msg, role=RoleEnum.USER, metadata=None)],
+                    user_id=socket.gethostname(),
+                    conversation_id=uuid.uuid4()
+                )
+            except Exception as e:
+                print(f"Failed to start runtime create: {e}")
+                return
+            import re, time, json
+            start = time.time()
+            injection_detected = False
+            topup_completed = False
+            high_empty_ratio_detected = False
+            extracted_port = None
+            extracted_svvd = None
+            extracted_ship_no = None
+            timeout = getattr(args, "wait_topup_timeout", 35)
+            fallback_sent = False
+            while True:
+                remaining = timeout - (time.time() - start)
+                if remaining <= 0:
+                    print("Timeout waiting for top-up completion.")
+                    break
+                try:
+                    log_msg = await asyncio.wait_for(queue.get(), timeout=remaining)
+                except asyncio.TimeoutError:
+                    print("Timeout while awaiting queue log message.")
+                    break
+                content = getattr(log_msg, 'content', '') or ''
+                action = getattr(log_msg, 'action', '') or ''
+                if action == "Injected deterministic top-up plan":
+                    injection_detected = True
+                    try:
+                        meta = json.loads(content)
+                        extracted_port = meta.get("port", extracted_port)
+                        extracted_svvd = meta.get("svvd", extracted_svvd)
+                    except Exception:
+                        pass
+                # Detect high empty_ratio from shipment details content
+                if not high_empty_ratio_detected and re.search(r'empty ratio is (\d+)%', content):
+                    try:
+                        ratio = int(re.search(r'empty ratio is (\d+)%', content).group(1))
+                        if ratio >= 85:
+                            high_empty_ratio_detected = True
+                    except Exception:
+                        pass
+                # Extract ship number, port, svvd from JSON references if available
+                if log_msg.references:
+                    try:
+                        ref_data = log_msg.references[0].get('content')
+                        if isinstance(ref_data, list) and ref_data and isinstance(ref_data[0], dict):
+                            row = ref_data[0]
+                            extracted_ship_no = str(row.get("SHIPMENT_NUMBER", extracted_ship_no))
+                            extracted_port = row.get("VOY_STOP_PORT_CDE", extracted_port)
+                            extracted_svvd = row.get("SVVD", extracted_svvd)
+                    except Exception:
+                        pass
+                # Detect top-up completion by source meta_data
+                if log_msg.references:
+                    try:
+                        meta_data = log_msg.references[0].get('meta_data', {})
+                        if isinstance(meta_data, dict):
+                            data_desc = meta_data.get('data_description', {})
+                            if isinstance(data_desc, dict) and data_desc.get('source') == 'get_eligible_topup_shipment':
+                                topup_completed = True
+                    except Exception:
+                        pass
+                # Print log line (compact)
+                print(f"[LOG] {action} | {content[:240]}")
+                if topup_completed:
+                    print("Top-up workflow completed.")
+                    break
+                # Fallback: if high empty ratio detected but no injection after 10s, trigger second message
+                if high_empty_ratio_detected and not injection_detected and not fallback_sent and (time.time() - start) > 10:
+                    fallback_sent = True
+                    if extracted_svvd and extracted_port:
+                        follow_msg = f"Find shipments from other services to top up {extracted_svvd} at {extracted_port}."
+                        print(f"[FALLBACK] Sending second message: {follow_msg}")
+                        from src.conversations.vo.message import Message as Msg2
+                        try:
+                            queue2, run_id2 = await runtime.create(
+                                messages=[Msg2(content=follow_msg, role=RoleEnum.USER, metadata=None)],
+                                user_id=socket.gethostname(),
+                                conversation_id=uuid.uuid4()
+                            )
+                            # Consume until eligible shipments appear or immediate completion
+                            while True:
+                                try:
+                                    log2 = await asyncio.wait_for(queue2.get(), timeout=timeout - (time.time() - start))
+                                except asyncio.TimeoutError:
+                                    print("Fallback timeout.")
+                                    break
+                                c2 = getattr(log2, 'content', '') or ''
+                                a2 = getattr(log2, 'action', '') or ''
+                                print(f"[FALLBACK-LOG] {a2} | {c2[:200]}")
+                                if log2.references:
+                                    try:
+                                        md2 = log2.references[0].get('meta_data', {})
+                                        if isinstance(md2, dict):
+                                            ds2 = md2.get('data_description', {})
+                                            if isinstance(ds2, dict) and ds2.get('source') == 'get_eligible_topup_shipment':
+                                                topup_completed = True
+                                                print("Top-up completion detected in fallback path.")
+                                                break
+                                    except Exception:
+                                        pass
+                                if getattr(log2, 'is_complete', False):
+                                    break
+                        except Exception as fe:
+                            print(f"Fallback second message failed: {fe}")
+                if getattr(log_msg, 'is_complete', False) and not (high_empty_ratio_detected and not topup_completed):
+                    # Normal completion when not waiting for top-up continuation
+                    break
+            print("Non-interactive chat session ended.")
+            return
         await chat(runtime)
 
 def main():
@@ -315,6 +449,9 @@ def main():
     parser.add_argument('--local', action='store_true', help='Run using local mock services (knowledge center, MCP, working memory) without remote auth/MLflow.')
     parser.add_argument('--spawn-local-stack', action='store_true', help='Auto-start local mock services if not already running.')
     parser.add_argument('--mock-sql', action='store_true', help='Use hardcoded SQL responses for testing (bypasses database).')
+    parser.add_argument('--user-message', type=str, default=None, help='(Chat mode only) Provide a single user message to run non-interactively and exit.')
+    parser.add_argument('--wait-topup', action='store_true', help='(Chat mode only) Wait for deterministic top-up workflow completion when high empty_ratio detected.')
+    parser.add_argument('--wait-topup-timeout', type=int, default=35, help='Timeout (seconds) for waiting top-up workflow completion (default: 35).')
     args = parser.parse_args()
     asyncio.run(main_async(args))
 

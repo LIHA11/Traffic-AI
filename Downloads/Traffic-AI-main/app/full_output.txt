@@ -1,0 +1,72 @@
+﻿Using Config Agent version 2.9.4
+Running in local mode
+
+
+##### planner.py MODULE LOADED #####
+
+
+Applied monkey patch: Replaced 1 references of ChatMessage.
+Attempt to get config from local path...
+python : INFO:Config-Agent-Logger:Attempt to get config from local path...
+At line:1 char:1
++ python cmd_local.py predict --local --mock-sql 2>&1 | Out-File -FileP ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (INFO:Config-Age...m local path...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Environment variable path is empty, skipped
+INFO:Config-Agent-Logger:Environment variable path is empty, skipped
+INFO:Config-Agent-Logger:Loading Service Config: C:\Users\LIHA11\Downloads\Traffic-AI-main\config\mock-service-instances.json
+Loading Service Config: C:\Users\LIHA11\Downloads\Traffic-AI-main\config\mock-service-instances.json
+Credential Loading Completed
+INFO:Config-Agent-Logger:Credential Loading Completed
+Loading Static Config: json_config.json
+INFO:Config-Agent-Logger:Loading Static Config: json_config.json
+Config Loading Completed
+INFO:Config-Agent-Logger:Config Loading Completed
+WARNING:root:Running in LOCAL MODE: overriding endpoints to localhost and disabling MLflow tracking.
+WARNING:root:MOCK SQL MODE: sql_execution tool will return hardcoded data.
+ERROR:src.connector.agentops.mlflow_ops:Failed to initialize MLflowOps: API request to endpoint /api/2.0/mlflow/experiments/get-by-name failed with error 
+code 403 != 200. Response body: 'RBAC: access denied'
+WARNING:src.copilot.copilot_v3:Failed to create MLflow run. Proceeding the request of LIHA11-W11 without tracing.
+Applied monkey patch: Replaced 1 references of ChatMessage.
+
+
+*** TaskDispatcher.on_receive_dag CALLED! DAG has 1 nodes ***
+
+
+ERROR:autogen_core:Error processing publish message for task_dispatcher/7246defb-828c-4e37-80f4-24d5705bdec7
+Traceback (most recent call last):
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_single_threaded_agent_runtime.py", line 604, in _on_messag
+e
+    return await agent.on_message(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_base_agent.py", line 119, in on_message
+    return await self.on_message_impl(message, ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_routed_agent.py", line 485, in on_message_impl
+    return await h(self, message, ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_routed_agent.py", line 149, in wrapper
+    return_value = await func(self, message, ctx)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\Downloads\Traffic-AI-main\app\src\copilot\agent\task_dispatcher.py", line 272, in on_receive_dag
+    done, reply_result, is_success = await self._handle_llm_result(llm_result, target_node, ctx)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\Downloads\Traffic-AI-main\app\src\copilot\agent\task_dispatcher.py", line 406, in _handle_llm_result
+    replies_message: List[ExecutorReplyMessage] = await gather_with_retries(task_factories, max_retries=3)
+                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\Downloads\Traffic-AI-main\app\src\copilot\utils\gather.py", line 34, in gather_with_retries
+    gathered = await asyncio.gather(*current_tasks)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_base_agent.py", line 136, in send_message
+    return await self._runtime.send_message(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_single_threaded_agent_runtime.py", line 383, in send_messa
+ge
+    return await future
+           ^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+Copilot response (content): The get_eligible_topup_shipment tool was called with port SIN, SVVD AAA1-OYK-203 S, and min_empty_ratio 85. The tool returned 1 eligible shipment for top-up at SIN to AAA1-OYK-203 S, excluding shipments with cargo nature DG, RD, AD and cargo nature group PCT. The result is stored in shared memory under key eligible_topup_SIN_AAA1OYK203S.
+Copilot response (duration): 16.925456762313843 ms
+Copilot response (metadata): {}

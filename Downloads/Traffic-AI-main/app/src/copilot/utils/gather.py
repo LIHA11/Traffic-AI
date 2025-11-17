@@ -31,9 +31,37 @@ async def gather_with_retries(task_factories, max_retries=5):
         logger.debug(f"Gather attempt {attempt} for indices: {pending}")
         # Only (re)run tasks that haven't succeeded yet
         current_tasks = [task_factories[i]() for i in pending]
-        gathered = await asyncio.gather(*current_tasks)
+        try:
+            # Use return_exceptions=True so we can handle failures individually
+            gathered = await asyncio.gather(*current_tasks, return_exceptions=True)
+        except asyncio.CancelledError:
+            # Global cancellation (e.g. user abort / EOF). Mark remaining as cancelled and exit.
+            logger.warning("gather_with_retries: received global cancellation; marking pending tasks as CancelledError")
+            # Cancellation tracking marker (append lightweight JSON line)
+            try:
+                import os, json, datetime
+                log_dir = os.path.join(os.path.dirname(__file__), "..", "..", "logs")
+                os.makedirs(log_dir, exist_ok=True)
+                marker = {
+                    "event": "cancellation",
+                    "pending_indices": list(pending),
+                    "timestamp": datetime.datetime.utcnow().isoformat() + "Z"
+                }
+                with open(os.path.join(log_dir, "cancellation_events.log"), "a", encoding="utf-8") as f:
+                    f.write(json.dumps(marker, ensure_ascii=False) + "\n")
+            except Exception as _log_err:
+                logger.debug(f"Cancellation marker write failed: {_log_err}")
+            for idx in list(pending):
+                results[idx] = asyncio.CancelledError()
+                pending.remove(idx)
+            break
         for idx, res in zip(list(pending), gathered):
-            if not isinstance(res, Exception):
+            if isinstance(res, asyncio.CancelledError):
+                # Treat cancellation as terminal for this task; do not retry further.
+                logger.info(f"gather_with_retries: task index {idx} cancelled; not retrying.")
+                results[idx] = res
+                pending.remove(idx)
+            elif not isinstance(res, Exception):
                 results[idx] = res
                 pending.remove(idx)
             else:

@@ -1,0 +1,94 @@
+﻿Using Config Agent version 2.9.4
+Running in local mode
+
+
+##### planner.py MODULE LOADED #####
+
+
+Applied monkey patch: Replaced 1 references of ChatMessage.
+Attempt to get config from local path...
+python : INFO:Config-Agent-Logger:Attempt to get config from local path...
+At line:1 char:1
++ python cmd_local.py predict --local --mock-sql 2>&1 | Out-File after_ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (INFO:Config-Age...m local path...:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Environment variable path is empty, skipped
+INFO:Config-Agent-Logger:Environment variable path is empty, skipped
+Loading Service Config: C:\Users\LIHA11\Downloads\Traffic-AI-main\config\mock-service-instances.json
+INFO:Config-Agent-Logger:Loading Service Config: C:\Users\LIHA11\Downloads\Traffic-AI-main\config\mock-service-instances.json
+Credential Loading Completed
+INFO:Config-Agent-Logger:Credential Loading Completed
+Loading Static Config: json_config.json
+INFO:Config-Agent-Logger:Loading Static Config: json_config.json
+Config Loading Completed
+INFO:Config-Agent-Logger:Config Loading Completed
+WARNING:root:Running in LOCAL MODE: overriding endpoints to localhost and disabling MLflow tracking.
+WARNING:root:MOCK SQL MODE: sql_execution tool will return hardcoded data.
+ERROR:src.connector.agentops.mlflow_ops:Failed to initialize MLflowOps: API request to endpoint /api/2.0/mlflow/experiments/get-by-name failed wi
+th error code 403 != 200. Response body: 'RBAC: access denied'
+WARNING:src.copilot.copilot_v3:Failed to create MLflow run. Proceeding the request of LIHA11-W11 without tracing.
+Applied monkey patch: Replaced 1 references of ChatMessage.
+
+
+*** TaskDispatcher.on_receive_dag CALLED! DAG has 1 nodes ***
+
+
+WARNING:src.copilot.utils.gather:gather_with_retries: received global cancellation; marking pending tasks as CancelledError
+ERROR:autogen_core:Error processing publish message for task_dispatcher/33d4f460-3153-463f-b8bc-a45dcd0b65c3
+Traceback (most recent call last):
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_single_threaded_agent_runtime.py", line 604, in _
+on_message
+    return await agent.on_message(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_base_agent.py", line 119, in on_message
+    return await self.on_message_impl(message, ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_routed_agent.py", line 485, in on_message_impl
+    return await h(self, message, ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_routed_agent.py", line 149, in wrapper
+    return_value = await func(self, message, ctx)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\Downloads\Traffic-AI-main\app\src\copilot\agent\task_dispatcher.py", line 274, in on_receive_dag
+    done, reply_result, is_success = await self._handle_llm_result(llm_result, target_node, ctx)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\Downloads\Traffic-AI-main\app\src\copilot\agent\task_dispatcher.py", line 444, in _handle_llm_result
+    is_sucess=reply_message.is_success,
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'CancelledError' object has no attribute 'is_success'
+ERROR:asyncio:unhandled exception during asyncio.run() shutdown
+task: <Task finished name='Task-39' coro=<SingleThreadedAgentRuntime._process_publish.<locals>._on_message() done, defined at C:\Users\LIHA11\App
+Data\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_single_threaded_agent_runtime.py:590> exception=AttributeError("'CancelledEr
+ror' object has no attribute 'is_success'")>
+Traceback (most recent call last):
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_single_threaded_agent_runtime.py", line 622, in _
+process_publish
+    await asyncio.gather(*responses)
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_single_threaded_agent_runtime.py", line 617, in _
+on_message
+    raise e
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_single_threaded_agent_runtime.py", line 604, in _
+on_message
+    return await agent.on_message(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_base_agent.py", line 119, in on_message
+    return await self.on_message_impl(message, ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_routed_agent.py", line 485, in on_message_impl
+    return await h(self, message, ctx)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\AppData\Local\Programs\Python\Python311\Lib\site-packages\autogen_core\_routed_agent.py", line 149, in wrapper
+    return_value = await func(self, message, ctx)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\Downloads\Traffic-AI-main\app\src\copilot\agent\task_dispatcher.py", line 274, in on_receive_dag
+    done, reply_result, is_success = await self._handle_llm_result(llm_result, target_node, ctx)
+                                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\LIHA11\Downloads\Traffic-AI-main\app\src\copilot\agent\task_dispatcher.py", line 444, in _handle_llm_result
+    is_sucess=reply_message.is_success,
+              ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'CancelledError' object has no attribute 'is_success'
+Copilot response (content): Called get_eligible_topup_shipment with port SIN, SVVD AAA1-OYK-203 S, min_empty_ratio 85, and memory_key eligible_topup_SIN_AAA1OYK203S. The tool returned 1 eligible shipment for top-up at SIN to AAA1-OYK-203 S, excluding shipments with cargo nature DG, RD, AD and cargo nature group PCT. The eligible shipment is SHIPMENT_NUMBER 2157351430 from SVVD WM2-CVF-004 W, with an empty ratio of 90%. Data is stored under 'eligible_topup_SIN_AAA1OYK203S' in shared memory.
+Copilot response (duration): 17.38625144958496 ms
+Copilot response (metadata): {}

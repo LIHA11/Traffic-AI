@@ -475,6 +475,103 @@ class CopilotAgentRuntime(SingleThreadedAgentRuntime):
                 )
             )
 
+        # Derive next top-up query intent from shipment JSON (handoff tool)
+        if not self._tool_registry.get_tool("derive_topup_query"):
+            async def derive_topup_query(
+                shipment_json: Annotated[str, "JSON array string of shipment records returned by sql_generation_expert (the 'result' field)."],
+                min_empty_ratio: Annotated[float, "Threshold to trigger top-up search (default 85)."] = 85.0,
+                default_port: Annotated[Optional[str], "Fallback port if missing in records."] = None,
+                default_svvd: Annotated[Optional[str], "Fallback SVVD if missing in records."] = None,
+            ) -> dict:
+                """Inspect shipment JSON. If any record has empty_ratio >= min_empty_ratio return a dict
+                instructing planner to create a top-up retrieval task; else return a no-op reason.
+
+                Output schema (need_topup == True):
+                {
+                  "need_topup": true,
+                  "next_user_message": "Find shipments from other service loops to top up <SVVD> at <PORT>",
+                  "port": "SIN",
+                  "svvd": "WM2-CVF-004 W",
+                  "min_empty_ratio": 85.0,
+                  "triggered_count": <int>,
+                  "triggered_records": [ {SHIPMENT_NUMBER, empty_ratio, SVVD, PORT}, ...],
+                  "suggested_memory_key": "eligible_topup_SIN_WM2CVF004W",
+                  "normalized_svvd": "WM2-CVF-004-W"
+                }
+
+                Output schema (need_topup == False):
+                {"need_topup": false, "reason": "No shipment empty_ratio >= 85", "max_empty_ratio_found": 72.5}
+                """
+                import json, re
+                try:
+                    data = json.loads(shipment_json)
+                except Exception as e:
+                    return {
+                        "need_topup": False,
+                        "reason": f"Failed to parse shipment_json: {e}",
+                        "raw": shipment_json[:400]
+                    }
+                if not isinstance(data, list) or not data:
+                    return {
+                        "need_topup": False,
+                        "reason": "No shipment records."
+                    }
+                # choose first record for base svvd/port (simple heuristic)
+                first = data[0] if isinstance(data[0], dict) else {}
+                svvd = first.get("SVVD") or default_svvd
+                port = first.get("VOY_STOP_PORT_CDE") or default_port
+                triggered_records: List[Dict[str, Any]] = []
+                for r in data:
+                    if not isinstance(r, dict):
+                        continue
+                    try:
+                        er = float(r.get("empty_ratio", 0))
+                        if er >= min_empty_ratio:
+                            triggered_records.append({
+                                "SHIPMENT_NUMBER": r.get("SHIPMENT_NUMBER"),
+                                "empty_ratio": er,
+                                "SVVD": r.get("SVVD"),
+                                "PORT": r.get("VOY_STOP_PORT_CDE"),
+                            })
+                    except Exception:
+                        continue
+                if not svvd or not port:
+                    return {
+                        "need_topup": False,
+                        "reason": "Missing SVVD or PORT; cannot construct top-up query.",
+                        "sample": triggered_records[:3]
+                    }
+                if triggered_records:
+                    norm_svvd_key = re.sub(r'[^A-Za-z0-9]', '', svvd.upper())
+                    norm_svvd_display = re.sub(r'[^A-Za-z0-9]', '-', svvd)
+                    topup_prompt = f"Find shipments from other service loops to top up {svvd} at {port}"
+                    return {
+                        "need_topup": True,
+                        "next_user_message": topup_prompt,
+                        "port": port,
+                        "svvd": svvd,
+                        "min_empty_ratio": min_empty_ratio,
+                        "triggered_count": len(triggered_records),
+                        "triggered_records": triggered_records,
+                        "suggested_memory_key": f"eligible_topup_{port.upper()}_{norm_svvd_key}",
+                        "normalized_svvd": norm_svvd_display,
+                    }
+                return {
+                    "need_topup": False,
+                    "reason": f"No shipment empty_ratio >= {min_empty_ratio}",
+                    "max_empty_ratio_found": max([
+                        (r.get("empty_ratio") if isinstance(r, dict) else 0) for r in data
+                    ], default=0)
+                }
+
+            self._tool_registry.register_tool(
+                FunctionTool(
+                    derive_topup_query,
+                    name="derive_topup_query",
+                    description="Given shipment JSON, decide whether to trigger a top-up search; returns next_user_message and suggested memory key if needed."
+                )
+            )
+
     async def start(self):
         """Initialize all agents concurrently and start."""
         await asyncio.gather(
@@ -576,6 +673,9 @@ class CopilotAgentRuntime(SingleThreadedAgentRuntime):
         await self._init_task_dispatcher(cfg["name"], cfg["tools"])
         
     async def _init_task_dispatcher(self, planner_name: str, tools: List[str]):
+        # Ensure deterministic top-up fast-path tools are present (function tools registered in ToolRegistry)
+        extra_tool_names = ["derive_topup_query", "get_eligible_topup_shipment", "get_from_memory"]
+        combined_tool_names = list(dict.fromkeys(tools + [t for t in extra_tool_names if self._tool_registry.get_tool(t)]))
         task_dispatcher_type = await TaskDispatcher.register_agent(
             name=AGENT_NAME + "_" + planner_name,
             runtime=self,
@@ -584,7 +684,7 @@ class CopilotAgentRuntime(SingleThreadedAgentRuntime):
             },
             chat_client=self._chat_client_creator.create(),
             knowledge_center=self._knowledge_center,
-            tools=self._tool_registry.get_tools(tools),
+            tools=self._tool_registry.get_tools(combined_tool_names),
             agent_ops=self._agent_ops,
             report_message=self.send_to_user,
         )

@@ -78,6 +78,19 @@ b. Next Action - What you plan to do next. Be sure to include:
 - Description: {{task}}
 - Success criteria: {{success_criteria}}
 
+### **Special Rule: Single Shipment Detail Queries**
+If the subtask description (or original user request) clearly specifies exactly ONE shipment number (pattern: `shipment number <digits>` or `<digits>`) and optionally a port (e.g. `at port SIN`):
+1. You MUST generate or execute a SQL that includes:
+   - `WHERE SHIPMENT_NUMBER = '<digits>'`
+   - If a port is specified, also include `AND VOY_STOP_PORT_CDE = '<PORT>'`.
+2. Do NOT retrieve other shipment numbers even if they appear in previous memories.
+3. If the tool returns multiple shipment rows, filter them logically (if the tool supports filtering) or call the resolved tool with ONLY the matching shipment in `result`.
+4. If no matching row is returned, use the failed tool and state: "No record found for SHIPMENT_NUMBER <digits> at port <PORT> (if given)." Do NOT fabricate data.
+5. Never expand a single-shipment query into a multi-shipment retrieval unless explicitly stated (e.g. "also include related shipments").
+
+### **High Empty Ratio Shortcut**
+If the single shipment result includes `empty_ratio >= 85`, clearly state this in the resolved tool result message. The Planner may trigger the top-up workflow afterward; you do NOT schedule extra subtasks yourself.
+
 [INFO FOR FAILURE HANDLING ONLY]
 {% if user_message is not none %}Original User Request: {{user_message}}
 Note: The above task is a subtask related to resolving the user’s request. Refer to the original request only if information is missing during failure handling.{% endif %}

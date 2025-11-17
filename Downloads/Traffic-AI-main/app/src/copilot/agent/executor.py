@@ -215,7 +215,95 @@ class Executor(Agent):
             content=self.get_prompt(EXECUTOR_REQUEST, prompt_vars)
         )
         
-        llm_result: CreateResult = await self.generate(ctx, system_message, append_generated_message=False, session_id=self.get_id())
+        # --- Special deterministic shortcut for handoff_agent: auto-build derive_topup_query + resolved calls ---
+        if self._name == "handoff_agent":
+            # Deterministic execution: directly run derive_topup_query, then create a single resolved call embedding its output.
+            import uuid, re
+            shipment_json = "[]"
+            port = None
+            svvd = None
+            ship_no = None
+            try:
+                m_num = re.search(r"shipment(?:\s+number)?\s+(\d+)", message.task, re.IGNORECASE)
+                m_port = re.search(r"port\s+([A-Z]{3})", message.task, re.IGNORECASE)
+                m_svvd = re.search(r"SVVD\s+([A-Z0-9\- ]+)", message.task, re.IGNORECASE)
+                ship_no = m_num.group(1) if m_num else None
+                port = m_port.group(1) if m_port else None
+                svvd = m_svvd.group(1).strip() if m_svvd else None
+            except Exception as e:
+                logger.debug("handoff_agent parse failed: %s", e)
+
+            # Attempt to load shipment JSON from memory (best-effort)
+            if self._wms and ship_no and port and svvd:
+                candidates = []
+                norm_svvd_us = svvd.replace(" ", "_")
+                norm_svvd_rm = re.sub(r"[^A-Za-z0-9]", "", svvd)
+                candidates.append(f"shipment_{ship_no}_{port}_{norm_svvd_us}")
+                candidates.append(f"shipment_{ship_no}_{port}_{norm_svvd_rm}")
+                # Deterministic new key format
+                candidates.append(f"shipment_json_{port.upper()}_{norm_svvd_rm.upper()}_{ship_no}")
+                for ck in candidates:
+                    try:
+                        resp = await self._wms.get(session_id=self.get_id(), resource_id=ck)
+                        if resp and resp.get("content"):
+                            shipment_json = resp.get("content")
+                            break
+                    except Exception as e:
+                        logger.debug("handoff_agent memory lookup failed for %s: %s", ck, e)
+                if shipment_json == "[]":
+                    logger.info("[handoff_agent] No shipment JSON found. Tried keys=%s", candidates)
+
+            # Run derive_topup_query tool function directly
+            derive_tool = next((t for t in self._tools if t.name == "derive_topup_query"), None)
+            derive_result: Dict[str, Any] = {"error": "derive_topup_query tool not found"}
+            if derive_tool is not None:
+                try:
+                    # FunctionTool exposes an async _func attribute usually
+                    func = getattr(derive_tool, "_func", None) or getattr(derive_tool, "func", None)
+                    if func:
+                        derive_result = await func(shipment_json=shipment_json, min_empty_ratio=85.0, default_port=port, default_svvd=svvd)
+                except Exception as e:
+                    derive_result = {"error": f"Failed to run derive_topup_query: {e}"}
+
+            need_topup = bool(derive_result.get("need_topup"))
+            triggered = derive_result.get("triggered_count", 0)
+            suggested_key = derive_result.get("suggested_memory_key")
+            summary_msg = (
+                f"Top-up recommended: {need_topup}. Triggered records: {triggered}." if suggested_key
+                else f"Top-up not recommended. Reason: {derive_result.get('reason','unknown')}"
+            )
+
+            # Optionally store decision in memory (separate from future top-up list key) 
+            decision_key = None
+            if self._wms and port and svvd:
+                try:
+                    norm_svvd_decision = re.sub(r"[^A-Za-z0-9]", "", svvd.upper()) if svvd else ""
+                    decision_key = f"handoff_decision_{port.upper()}_{norm_svvd_decision}"
+                    await self._wms.set(
+                        content=json.dumps(derive_result, ensure_ascii=False),
+                        session_id=self.get_id(),
+                        resource_id=decision_key,
+                        data_description={
+                            "source": "handoff_agent",
+                            "ship_no": ship_no,
+                            "port": port,
+                            "svvd": svvd,
+                            "derived": True,
+                            "suggested_topup_key": suggested_key
+                        }
+                    )
+                    logger.info("[handoff_agent] Stored decision to memory key %s", decision_key)
+                except Exception as e:
+                    logger.warning("[handoff_agent] Failed to store decision: %s", e)
+
+            resolved_args = {
+                "result": json.dumps(derive_result, ensure_ascii=False),
+                "user_message": summary_msg,
+                "result_memory_key": decision_key
+            }
+            llm_result = type("_FakeResult", (), {"content": [FunctionCall(id=str(uuid.uuid4()), name=NAME_RESOLVED_TOOL, arguments=json.dumps(resolved_args, ensure_ascii=False))]})()
+        else:
+            llm_result: CreateResult = await self.generate(ctx, system_message, append_generated_message=False, session_id=self.get_id())
 
         masked_tools = [tool for tool in self._tools if tool.name in {NAME_FAIL_TOOL, NAME_RESOLVED_TOOL}]
         
@@ -242,6 +330,23 @@ class Executor(Agent):
                         outputs=reply_message,
                         attributes={"next_agent": message.sent_from} if "sent_from" in message else None)
             
+        # Emit a completion log message so upstream runtime can mark flow complete when this is a terminal worker
+        if not message.sent_from:
+            # Only mark is_complete when this truly represents a terminal success.
+            # For high empty_ratio (is_success=False) we keep the queue open so Planner can inject top-up workflow.
+            try:
+                await self._report_message(
+                    LogMessage(
+                        agent_name=self._name,
+                        action="Subtask completed",
+                        content=reply_result if isinstance(reply_result, str) else json.dumps(reply_result, ensure_ascii=False),
+                        id=self.get_id(),
+                        is_complete=bool(is_success),
+                    )
+                )
+            except Exception as e:
+                logger.warning("Failed to emit completion log message for %s: %s", self._name, e)
+
         if message.sent_from:
             await self.publish_message(
                 reply_message,
@@ -490,6 +595,68 @@ class Executor(Agent):
                                 is_complete=False,
                             )
                         )
+                # Treat shipment-details with high empty_ratio as non-terminal (is_success=False)
+                # so that Planner/TaskDispatcher can continue into top-up workflow.
+                if result.name == NAME_RESOLVED_TOOL:
+                    try:
+                        parsed = json.loads(result.content) if isinstance(result.content, str) else result.content
+                        # Heuristic: list of shipment dicts with empty_ratio field
+                        if isinstance(parsed, list) and parsed and all(isinstance(x, dict) for x in parsed):
+                            # --- Single-shipment filtering enhancement ---
+                            # If original user_message or task references exactly one shipment number, filter out others.
+                            import re
+                            single_ship_match = None
+                            if hasattr(ctx, 'topic_id'):
+                                pass  # placeholder if future context needed
+                            # Prefer message.task if available in chat history earlier (we have message in outer scope as 'message' variable)
+                            # We don't have direct access to ExecutorRequestMessage here, so infer from last system message stored.
+                            # Simpler: scan chat history content for 'shipment number' pattern.
+                            ship_nums = set()
+                            for h in self._chat_history:
+                                try:
+                                    m = re.findall(r"shipment(?:\s+number)?\s+(\d{6,})", str(h.content), re.IGNORECASE)
+                                    ship_nums.update(m)
+                                except Exception:
+                                    continue
+                            if len(ship_nums) == 1:
+                                target_ship = list(ship_nums)[0]
+                                before_len = len(parsed)
+                                filtered = [row for row in parsed if str(row.get("SHIPMENT_NUMBER")) == target_ship]
+                                if filtered and len(filtered) != before_len:
+                                    logger.info("[Executor] Filtered shipment list from %d to 1 for single-shipment query %s", before_len, target_ship)
+                                    parsed = filtered
+                                    # Overwrite result.content with filtered JSON
+                                    result.content = json.dumps(parsed, ensure_ascii=False)
+                            # Persist deterministic shipment JSON key for downstream handoff_agent
+                            try:
+                                if self._wms and parsed:
+                                    first = parsed[0]
+                                    ship_no = str(first.get("SHIPMENT_NUMBER"))
+                                    port = first.get("VOY_STOP_PORT_CDE")
+                                    svvd = first.get("SVVD")
+                                    if ship_no and port and svvd:
+                                        norm_svvd = re.sub(r"[^A-Za-z0-9]", "", str(svvd).upper())
+                                        det_key = f"shipment_json_{str(port).upper()}_{norm_svvd}_{ship_no}"
+                                        await self._wms.set(
+                                            content=json.dumps(parsed, ensure_ascii=False),
+                                            session_id=self.get_id(),
+                                            resource_id=det_key,
+                                            data_description={
+                                                "source": "executor_single_shipment_store",
+                                                "port": port,
+                                                "svvd": svvd,
+                                                "ship_no": ship_no,
+                                                "record_count": len(parsed)
+                                            }
+                                        )
+                                        logger.info("[Executor] Stored shipment JSON under deterministic key %s", det_key)
+                            except Exception as store_err:
+                                logger.warning("[Executor] Failed storing deterministic shipment JSON key: %s", store_err)
+                            if any(float(item.get("empty_ratio", 0) or 0) >= 85.0 for item in parsed):
+                                logger.info("[Executor] Detected shipment details with empty_ratio>=85; marking is_success=False to allow top-up continuation.")
+                                return True, result.content, False
+                    except Exception as _err:
+                        logger.debug("[Executor] empty_ratio check skipped due to error: %s", _err)
                 return True, result.content, result.name == NAME_RESOLVED_TOOL
 
         return False, None, True
